@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Contract Audit Report - VulnerableBank.sol</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+        h1 { color: #1a1a2e; }
+        .summary { background: #e8f4f8; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .finding { border-radius: 4px; }
+        pre { background: #282c34; color: #abb2bf; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        .stats { display: flex; gap: 20px; flex-wrap: wrap; }
+        .stat { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>Smart Contract Audit Report</h1>
+    <p><strong>Contract:</strong> VulnerableBank.sol</p>
+    <p><strong>Date:</strong> 2026-03-27T04:32:04.333052</p>
+    <p><strong>Report ID:</strong> N/A</p>
+
+    <div class="summary">
+        <h2>Risk Summary</h2>
+        <p><strong>Overall Risk:</strong> Medium</p>
+        <p><strong>Risk Score:</strong> 45.8/100</p>
+        <p>Found 18 potential issues. Overall risk level: Medium.</p>
+        <p><em></em></p>
+
+        <div class="stats">
+            <div class="stat"><h3 style="color: #dc3545;">3</h3>Critical</div>
+            <div class="stat"><h3 style="color: #fd7e14;">6</h3>High</div>
+            <div class="stat"><h3 style="color: #ffc107;">8</h3>Medium</div>
+            <div class="stat"><h3 style="color: #28a745;">1</h3>Low</div>
+            <div class="stat"><h3 style="color: #17a2b8;">0</h3>Info</div>
+        </div>
+    </div>
+
+    <h2>Detailed Findings</h2>
+    
+            <div class="finding" style="border-left: 4px solid #dc3545; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#1 Unprotected SELFDESTRUCT
+                    <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Critical
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-106</p>
+                <p><strong>Description:</strong> selfdestruct without proper access control can destroy the contract</p>
+                <p><strong>Confidence:</strong> 94.0%</p>
+                <p><strong>Line:</strong> 48</p>
+                <pre><code>selfdestruct(payable(msg.sender));</code></pre>
+                <p><strong>Remediation:</strong> Add strict access control to selfdestruct calls, or avoid using selfdestruct entirely.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>The selfdestruct function permanently destroys a contract and sends its remaining Ether to a designated address. Without access control, anyone could destroy the contract.</p><h4>Attack Scenario</h4><pre>1. Attacker finds selfdestruct callable without authorization.
+2. Attacker calls selfdestruct, permanently destroying the contract.
+3. All remaining Ether is sent to the attacker's address.
+4. The contract is permanently removed from the blockchain.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+function destroy() public {
+    selfdestruct(payable(msg.sender));
+}
+
+// FIXED:
+function destroy() public onlyOwner {
+    selfdestruct(payable(owner));
+}</code></pre><h4>Code Context</h4><pre>    43:         payable(msg.sender).transfer(balance);
+    44:     }
+    45: 
+    46:     // VULNERABILITY: Unprotected selfdestruct (SWC-106)
+    47:     function destroy() public {
+>>> 48:         selfdestruct(payable(msg.sender));
+    49:     }
+    50: 
+    51:     // VULNERABILITY: Unchecked return value (SWC-104)
+    52:     function unsafeSend(address payable _to, uint256 _amount) public {
+    53:         _to.send(_amount);  // Return value not checked</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #dc3545; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#2 Authorization through tx.origin
+                    <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Critical
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-115</p>
+                <p><strong>Description:</strong> Using tx.origin for authorization is vulnerable to phishing attacks</p>
+                <p><strong>Confidence:</strong> 93.0%</p>
+                <p><strong>Line:</strong> 33</p>
+                <pre><code>// VULNERABILITY: tx.origin authentication (SWC-115)</code></pre>
+                <p><strong>Remediation:</strong> Replace tx.origin with msg.sender for authorization checks. tx.origin can be manipulated through intermediary contracts.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Using tx.origin for authorization is dangerous because it refers to the original sender of the transaction, not the immediate caller. An attacker can trick a user into calling a malicious contract that then calls the vulnerable contract, passing the tx.origin check.</p><h4>Attack Scenario</h4><pre>1. Attacker creates a seemingly legitimate contract (e.g., a token sale).
+2. Victim (contract owner) interacts with the attacker's contract.
+3. Attacker's contract calls the vulnerable contract.
+4. tx.origin still points to the victim (original sender).
+5. The authorization check passes, and the attacker executes privileged actions.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+require(tx.origin == owner);
+
+// FIXED:
+require(msg.sender == owner);</code></pre><h4>Code Context</h4><pre>    28: 
+    29:         // State change after external call - REENTRANCY RISK
+    30:         balances[msg.sender] -= _amount;
+    31:     }
+    32: 
+>>> 33:     // VULNERABILITY: tx.origin authentication (SWC-115)
+    34:     function transferOwnership(address newOwner) public {
+    35:         require(tx.origin == owner, "Not owner");
+    36:         owner = newOwner;
+    37:     }
+    38: </pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #dc3545; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#3 Authorization through tx.origin
+                    <span style="background: #dc3545; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Critical
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-115</p>
+                <p><strong>Description:</strong> Using tx.origin for authorization is vulnerable to phishing attacks</p>
+                <p><strong>Confidence:</strong> 93.0%</p>
+                <p><strong>Line:</strong> 35</p>
+                <pre><code>require(tx.origin == owner, "Not owner");</code></pre>
+                <p><strong>Remediation:</strong> Replace tx.origin with msg.sender for authorization checks. tx.origin can be manipulated through intermediary contracts.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Using tx.origin for authorization is dangerous because it refers to the original sender of the transaction, not the immediate caller. An attacker can trick a user into calling a malicious contract that then calls the vulnerable contract, passing the tx.origin check.</p><h4>Attack Scenario</h4><pre>1. Attacker creates a seemingly legitimate contract (e.g., a token sale).
+2. Victim (contract owner) interacts with the attacker's contract.
+3. Attacker's contract calls the vulnerable contract.
+4. tx.origin still points to the victim (original sender).
+5. The authorization check passes, and the attacker executes privileged actions.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+require(tx.origin == owner);
+
+// FIXED:
+require(msg.sender == owner);</code></pre><h4>Code Context</h4><pre>    30:         balances[msg.sender] -= _amount;
+    31:     }
+    32: 
+    33:     // VULNERABILITY: tx.origin authentication (SWC-115)
+    34:     function transferOwnership(address newOwner) public {
+>>> 35:         require(tx.origin == owner, "Not owner");
+    36:         owner = newOwner;
+    37:     }
+    38: 
+    39:     // VULNERABILITY: Unprotected Ether Withdrawal (SWC-105)
+    40:     // No access control on withdrawal</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #fd7e14; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#4 Reentrancy
+                    <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        High
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> ML-REENTRANCY</p>
+                <p><strong>Description:</strong> ML model detected potential reentrancy vulnerability pattern</p>
+                <p><strong>Confidence:</strong> 90.0%</p>
+                
+                
+                <p><strong>Remediation:</strong> Use checks-effects-interactions pattern. Consider OpenZeppelin ReentrancyGuard.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>A reentrancy vulnerability occurs when an external call is made before internal state changes are completed. An attacker can recursively call back into the vulnerable function before the first execution is finished, potentially draining funds. This was the root cause of the infamous DAO hack in 2016 which led to a loss of ~$60M.</p><h4>Attack Scenario</h4><pre>1. Attacker deploys a malicious contract with a fallback/receive function.
+2. Attacker calls the vulnerable withdraw function.
+3. The contract sends Ether to the attacker before updating balances.
+4. The attacker's fallback function re-enters the withdraw function.
+5. Since the balance hasn't been updated, the attacker can withdraw again.
+6. This repeats until the contract is drained.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+function withdraw() public {
+    uint amount = balances[msg.sender];
+    (bool success, ) = msg.sender.call{value: amount}("");
+    require(success);
+    balances[msg.sender] = 0;  // State change AFTER external call
+}
+
+// FIXED (Checks-Effects-Interactions):
+function withdraw() public nonReentrant {
+    uint amount = balances[msg.sender];
+    balances[msg.sender] = 0;  // State change BEFORE external call
+    (bool success, ) = msg.sender.call{value: amount}("");
+    require(success);
+}</code></pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #fd7e14; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#5 Authorization through tx.origin
+                    <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        High
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> ML-TX_ORIGIN</p>
+                <p><strong>Description:</strong> ML model detected potential tx origin vulnerability pattern</p>
+                <p><strong>Confidence:</strong> 90.0%</p>
+                
+                
+                <p><strong>Remediation:</strong> Use msg.sender instead of tx.origin for authorization.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Using tx.origin for authorization is dangerous because it refers to the original sender of the transaction, not the immediate caller. An attacker can trick a user into calling a malicious contract that then calls the vulnerable contract, passing the tx.origin check.</p><h4>Attack Scenario</h4><pre>1. Attacker creates a seemingly legitimate contract (e.g., a token sale).
+2. Victim (contract owner) interacts with the attacker's contract.
+3. Attacker's contract calls the vulnerable contract.
+4. tx.origin still points to the victim (original sender).
+5. The authorization check passes, and the attacker executes privileged actions.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+require(tx.origin == owner);
+
+// FIXED:
+require(msg.sender == owner);</code></pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #fd7e14; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#6 Floating Pragma
+                    <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        High
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-103</p>
+                <p><strong>Description:</strong> Contract should lock pragma to specific compiler version</p>
+                <p><strong>Confidence:</strong> 77.0%</p>
+                <p><strong>Line:</strong> 5</p>
+                <pre><code>pragma solidity ^0.7.0;</code></pre>
+                <p><strong>Remediation:</strong> Lock the pragma to a specific version (e.g., pragma solidity 0.8.20;) instead of using ^.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>A floating pragma (^0.x.x) allows compilation with any compatible compiler version. This can lead to inconsistent behavior across deployments.</p><h4>Attack Scenario</h4><pre>Specific attack scenario depends on the contract context.</pre><h4>Fix Example</h4><pre><code>// Refer to the remediation suggestion above.</code></pre><h4>Code Context</h4><pre>    1: // SPDX-License-Identifier: MIT
+    2: // VULNERABLE CONTRACT - For testing purposes only
+    3: // Contains multiple known vulnerabilities
+    4: 
+>>> 5: pragma solidity ^0.7.0;
+    6: 
+    7: contract VulnerableBank {
+    8:     mapping(address => uint256) public balances;
+    9:     address public owner;
+    10: </pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #fd7e14; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#7 Integer Overflow/Underflow
+                    <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        High
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-101</p>
+                <p><strong>Description:</strong> Arithmetic operations without overflow checks can wrap around</p>
+                <p><strong>Confidence:</strong> 74.0%</p>
+                <p><strong>Line:</strong> 17</p>
+                <pre><code>balances[msg.sender] += msg.value;</code></pre>
+                <p><strong>Remediation:</strong> Use Solidity >=0.8.0 which has built-in overflow checks, or use OpenZeppelin's SafeMath library for older versions.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Integer overflow/underflow occurs when arithmetic operations exceed the maximum or minimum value that a fixed-size integer can hold. In Solidity versions prior to 0.8.0, this silently wraps around, potentially allowing attackers to manipulate balances or bypass checks.</p><h4>Attack Scenario</h4><pre>1. Attacker identifies an arithmetic operation without overflow protection.
+2. Attacker crafts an input that causes the value to wrap around.
+3. For overflow: uint8(255) + 1 = 0, bypassing balance checks.
+4. For underflow: uint8(0) - 1 = 255, creating a huge fake balance.
+5. Attacker uses the manipulated value to steal funds.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE (Solidity < 0.8.0):
+uint8 balance = 255;
+balance += 1;  // Wraps to 0!
+
+// FIXED Option 1: Use Solidity >= 0.8.0 (built-in checks)
+pragma solidity ^0.8.0;
+
+// FIXED Option 2: Use SafeMath
+using SafeMath for uint256;
+balance = balance.add(1);  // Reverts on overflow</code></pre><h4>Code Context</h4><pre>    12:         owner = msg.sender;
+    13:     }
+    14: 
+    15:     // Deposit Ether
+    16:     function deposit() public payable {
+>>> 17:         balances[msg.sender] += msg.value;
+    18:     }
+    19: 
+    20:     // VULNERABILITY: Reentrancy (SWC-107)
+    21:     // External call before state update
+    22:     function withdraw(uint256 _amount) public {</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #fd7e14; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#8 Integer Overflow/Underflow
+                    <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        High
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-101</p>
+                <p><strong>Description:</strong> Arithmetic operations without overflow checks can wrap around</p>
+                <p><strong>Confidence:</strong> 74.0%</p>
+                <p><strong>Line:</strong> 30</p>
+                <pre><code>balances[msg.sender] -= _amount;</code></pre>
+                <p><strong>Remediation:</strong> Use Solidity >=0.8.0 which has built-in overflow checks, or use OpenZeppelin's SafeMath library for older versions.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Integer overflow/underflow occurs when arithmetic operations exceed the maximum or minimum value that a fixed-size integer can hold. In Solidity versions prior to 0.8.0, this silently wraps around, potentially allowing attackers to manipulate balances or bypass checks.</p><h4>Attack Scenario</h4><pre>1. Attacker identifies an arithmetic operation without overflow protection.
+2. Attacker crafts an input that causes the value to wrap around.
+3. For overflow: uint8(255) + 1 = 0, bypassing balance checks.
+4. For underflow: uint8(0) - 1 = 255, creating a huge fake balance.
+5. Attacker uses the manipulated value to steal funds.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE (Solidity < 0.8.0):
+uint8 balance = 255;
+balance += 1;  // Wraps to 0!
+
+// FIXED Option 1: Use Solidity >= 0.8.0 (built-in checks)
+pragma solidity ^0.8.0;
+
+// FIXED Option 2: Use SafeMath
+using SafeMath for uint256;
+balance = balance.add(1);  // Reverts on overflow</code></pre><h4>Code Context</h4><pre>    25:         // BAD: External call before state change
+    26:         (bool success, ) = msg.sender.call{value: _amount}("");
+    27:         require(success, "Transfer failed");
+    28: 
+    29:         // State change after external call - REENTRANCY RISK
+>>> 30:         balances[msg.sender] -= _amount;
+    31:     }
+    32: 
+    33:     // VULNERABILITY: tx.origin authentication (SWC-115)
+    34:     function transferOwnership(address newOwner) public {
+    35:         require(tx.origin == owner, "Not owner");</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #fd7e14; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#9 Integer Overflow/Underflow
+                    <span style="background: #fd7e14; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        High
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-101</p>
+                <p><strong>Description:</strong> Arithmetic operations without overflow checks can wrap around</p>
+                <p><strong>Confidence:</strong> 74.0%</p>
+                <p><strong>Line:</strong> 58</p>
+                <pre><code>balances[_user] += _amount;  // Can overflow in Solidity < 0.8</code></pre>
+                <p><strong>Remediation:</strong> Use Solidity >=0.8.0 which has built-in overflow checks, or use OpenZeppelin's SafeMath library for older versions.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Integer overflow/underflow occurs when arithmetic operations exceed the maximum or minimum value that a fixed-size integer can hold. In Solidity versions prior to 0.8.0, this silently wraps around, potentially allowing attackers to manipulate balances or bypass checks.</p><h4>Attack Scenario</h4><pre>1. Attacker identifies an arithmetic operation without overflow protection.
+2. Attacker crafts an input that causes the value to wrap around.
+3. For overflow: uint8(255) + 1 = 0, bypassing balance checks.
+4. For underflow: uint8(0) - 1 = 255, creating a huge fake balance.
+5. Attacker uses the manipulated value to steal funds.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE (Solidity < 0.8.0):
+uint8 balance = 255;
+balance += 1;  // Wraps to 0!
+
+// FIXED Option 1: Use Solidity >= 0.8.0 (built-in checks)
+pragma solidity ^0.8.0;
+
+// FIXED Option 2: Use SafeMath
+using SafeMath for uint256;
+balance = balance.add(1);  // Reverts on overflow</code></pre><h4>Code Context</h4><pre>    53:         _to.send(_amount);  // Return value not checked
+    54:     }
+    55: 
+    56:     // VULNERABILITY: Integer Overflow (SWC-101) - Solidity < 0.8.0
+    57:     function addBalance(address _user, uint256 _amount) public {
+>>> 58:         balances[_user] += _amount;  // Can overflow in Solidity < 0.8
+    59:     }
+    60: 
+    61:     // VULNERABILITY: Weak randomness (SWC-120)
+    62:     function lottery() public view returns (uint256) {
+    63:         // BAD: Using block variables for randomness</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#10 Unchecked Call Return Value
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> ML-UNCHECKED_RETURN</p>
+                <p><strong>Description:</strong> ML model detected potential unchecked return vulnerability pattern</p>
+                <p><strong>Confidence:</strong> 70.0%</p>
+                
+                
+                <p><strong>Remediation:</strong> Always check return values of external calls.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Low-level calls (.call(), .send(), .delegatecall()) return a boolean indicating success or failure. If this return value is not checked, the contract may continue execution assuming the call succeeded when it actually failed, leading to inconsistent state.</p><h4>Attack Scenario</h4><pre>1. Contract makes a low-level call (e.g., .send() to transfer Ether).
+2. The call fails silently (recipient reverts or runs out of gas).
+3. Since the return value isn't checked, execution continues.
+4. State is updated as if the transfer succeeded.
+5. Funds are lost or accounting becomes inconsistent.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+payable(addr).send(amount);  // Return value ignored
+
+// FIXED:
+(bool success, ) = payable(addr).call{value: amount}("");
+require(success, "Transfer failed");</code></pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#11 Unprotected Ether Withdrawal
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-105</p>
+                <p><strong>Description:</strong> Functions that withdraw Ether should be access-controlled</p>
+                <p><strong>Confidence:</strong> 65.0%</p>
+                <p><strong>Line:</strong> 26</p>
+                <pre><code>(bool success, ) = msg.sender.call{value: _amount}("");</code></pre>
+                <p><strong>Remediation:</strong> Add access control modifiers (onlyOwner, require(msg.sender == owner)) to functions that transfer Ether.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Functions that transfer Ether without proper access control can be called by anyone, allowing unauthorized withdrawal of contract funds.</p><h4>Attack Scenario</h4><pre>1. Attacker discovers a withdraw function without access control.
+2. Attacker calls the function directly.
+3. Contract transfers Ether to the attacker.
+4. All contract funds can be stolen.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+function withdraw(uint amount) public {
+    payable(msg.sender).transfer(amount);
+}
+
+// FIXED:
+function withdraw(uint amount) public onlyOwner {
+    payable(msg.sender).transfer(amount);
+}</code></pre><h4>Code Context</h4><pre>    21:     // External call before state update
+    22:     function withdraw(uint256 _amount) public {
+    23:         require(balances[msg.sender] >= _amount, "Insufficient balance");
+    24: 
+    25:         // BAD: External call before state change
+>>> 26:         (bool success, ) = msg.sender.call{value: _amount}("");
+    27:         require(success, "Transfer failed");
+    28: 
+    29:         // State change after external call - REENTRANCY RISK
+    30:         balances[msg.sender] -= _amount;
+    31:     }</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#12 Unprotected Ether Withdrawal
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-105</p>
+                <p><strong>Description:</strong> Functions that withdraw Ether should be access-controlled</p>
+                <p><strong>Confidence:</strong> 65.0%</p>
+                <p><strong>Line:</strong> 43</p>
+                <pre><code>payable(msg.sender).transfer(balance);</code></pre>
+                <p><strong>Remediation:</strong> Add access control modifiers (onlyOwner, require(msg.sender == owner)) to functions that transfer Ether.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Functions that transfer Ether without proper access control can be called by anyone, allowing unauthorized withdrawal of contract funds.</p><h4>Attack Scenario</h4><pre>1. Attacker discovers a withdraw function without access control.
+2. Attacker calls the function directly.
+3. Contract transfers Ether to the attacker.
+4. All contract funds can be stolen.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+function withdraw(uint amount) public {
+    payable(msg.sender).transfer(amount);
+}
+
+// FIXED:
+function withdraw(uint amount) public onlyOwner {
+    payable(msg.sender).transfer(amount);
+}</code></pre><h4>Code Context</h4><pre>    38: 
+    39:     // VULNERABILITY: Unprotected Ether Withdrawal (SWC-105)
+    40:     // No access control on withdrawal
+    41:     function withdrawAll() public {
+    42:         uint256 balance = address(this).balance;
+>>> 43:         payable(msg.sender).transfer(balance);
+    44:     }
+    45: 
+    46:     // VULNERABILITY: Unprotected selfdestruct (SWC-106)
+    47:     function destroy() public {
+    48:         selfdestruct(payable(msg.sender));</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#13 Unprotected Ether Withdrawal
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-105</p>
+                <p><strong>Description:</strong> Functions that withdraw Ether should be access-controlled</p>
+                <p><strong>Confidence:</strong> 65.0%</p>
+                <p><strong>Line:</strong> 53</p>
+                <pre><code>_to.send(_amount);  // Return value not checked</code></pre>
+                <p><strong>Remediation:</strong> Add access control modifiers (onlyOwner, require(msg.sender == owner)) to functions that transfer Ether.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Functions that transfer Ether without proper access control can be called by anyone, allowing unauthorized withdrawal of contract funds.</p><h4>Attack Scenario</h4><pre>1. Attacker discovers a withdraw function without access control.
+2. Attacker calls the function directly.
+3. Contract transfers Ether to the attacker.
+4. All contract funds can be stolen.</pre><h4>Fix Example</h4><pre><code>// VULNERABLE:
+function withdraw(uint amount) public {
+    payable(msg.sender).transfer(amount);
+}
+
+// FIXED:
+function withdraw(uint amount) public onlyOwner {
+    payable(msg.sender).transfer(amount);
+}</code></pre><h4>Code Context</h4><pre>    48:         selfdestruct(payable(msg.sender));
+    49:     }
+    50: 
+    51:     // VULNERABILITY: Unchecked return value (SWC-104)
+    52:     function unsafeSend(address payable _to, uint256 _amount) public {
+>>> 53:         _to.send(_amount);  // Return value not checked
+    54:     }
+    55: 
+    56:     // VULNERABILITY: Integer Overflow (SWC-101) - Solidity < 0.8.0
+    57:     function addBalance(address _user, uint256 _amount) public {
+    58:         balances[_user] += _amount;  // Can overflow in Solidity < 0.8</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#14 Weak Sources of Randomness
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-120</p>
+                <p><strong>Description:</strong> Using block variables for randomness is predictable by miners</p>
+                <p><strong>Confidence:</strong> 62.0%</p>
+                <p><strong>Line:</strong> 64</p>
+                <pre><code>uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;</code></pre>
+                <p><strong>Remediation:</strong> Use Chainlink VRF or commit-reveal schemes for secure randomness. Block variables are manipulable by miners.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Block variables (block.timestamp, block.difficulty, blockhash) are deterministic and can be predicted or manipulated by miners. Using them as a source of randomness in gambling or lottery contracts is insecure.</p><h4>Attack Scenario</h4><pre>Specific attack scenario depends on the contract context.</pre><h4>Fix Example</h4><pre><code>// Refer to the remediation suggestion above.</code></pre><h4>Code Context</h4><pre>    59:     }
+    60: 
+    61:     // VULNERABILITY: Weak randomness (SWC-120)
+    62:     function lottery() public view returns (uint256) {
+    63:         // BAD: Using block variables for randomness
+>>> 64:         uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;
+    65:         return winner;
+    66:     }
+    67: 
+    68:     // Get contract balance
+    69:     function getBalance() public view returns (uint256) {</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#15 Weak Sources of Randomness
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-120</p>
+                <p><strong>Description:</strong> Using block variables for randomness is predictable by miners</p>
+                <p><strong>Confidence:</strong> 62.0%</p>
+                <p><strong>Line:</strong> 64</p>
+                <pre><code>uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;</code></pre>
+                <p><strong>Remediation:</strong> Use Chainlink VRF or commit-reveal schemes for secure randomness. Block variables are manipulable by miners.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Block variables (block.timestamp, block.difficulty, blockhash) are deterministic and can be predicted or manipulated by miners. Using them as a source of randomness in gambling or lottery contracts is insecure.</p><h4>Attack Scenario</h4><pre>Specific attack scenario depends on the contract context.</pre><h4>Fix Example</h4><pre><code>// Refer to the remediation suggestion above.</code></pre><h4>Code Context</h4><pre>    59:     }
+    60: 
+    61:     // VULNERABILITY: Weak randomness (SWC-120)
+    62:     function lottery() public view returns (uint256) {
+    63:         // BAD: Using block variables for randomness
+>>> 64:         uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;
+    65:         return winner;
+    66:     }
+    67: 
+    68:     // Get contract balance
+    69:     function getBalance() public view returns (uint256) {</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#16 State Variable Default Visibility
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-108</p>
+                <p><strong>Description:</strong> State variables without explicit visibility default to internal</p>
+                <p><strong>Confidence:</strong> 56.0%</p>
+                <p><strong>Line:</strong> 42</p>
+                <pre><code>uint256 balance = address(this).balance;</code></pre>
+                <p><strong>Remediation:</strong> Always specify visibility for state variables explicitly.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Potential State Variable Default Visibility vulnerability detected.</p><h4>Attack Scenario</h4><pre>Specific attack scenario depends on the contract context.</pre><h4>Fix Example</h4><pre><code>// Refer to the remediation suggestion above.</code></pre><h4>Code Context</h4><pre>    37:     }
+    38: 
+    39:     // VULNERABILITY: Unprotected Ether Withdrawal (SWC-105)
+    40:     // No access control on withdrawal
+    41:     function withdrawAll() public {
+>>> 42:         uint256 balance = address(this).balance;
+    43:         payable(msg.sender).transfer(balance);
+    44:     }
+    45: 
+    46:     // VULNERABILITY: Unprotected selfdestruct (SWC-106)
+    47:     function destroy() public {</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #ffc107; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#17 State Variable Default Visibility
+                    <span style="background: #ffc107; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Medium
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-108</p>
+                <p><strong>Description:</strong> State variables without explicit visibility default to internal</p>
+                <p><strong>Confidence:</strong> 56.0%</p>
+                <p><strong>Line:</strong> 64</p>
+                <pre><code>uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;</code></pre>
+                <p><strong>Remediation:</strong> Always specify visibility for state variables explicitly.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>Potential State Variable Default Visibility vulnerability detected.</p><h4>Attack Scenario</h4><pre>Specific attack scenario depends on the contract context.</pre><h4>Fix Example</h4><pre><code>// Refer to the remediation suggestion above.</code></pre><h4>Code Context</h4><pre>    59:     }
+    60: 
+    61:     // VULNERABILITY: Weak randomness (SWC-120)
+    62:     function lottery() public view returns (uint256) {
+    63:         // BAD: Using block variables for randomness
+>>> 64:         uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;
+    65:         return winner;
+    66:     }
+    67: 
+    68:     // Get contract balance
+    69:     function getBalance() public view returns (uint256) {</pre></details>
+            </div>
+            
+            <div class="finding" style="border-left: 4px solid #28a745; padding: 15px; margin: 10px 0; background: #f8f9fa;">
+                <h3>#18 Block Timestamp Dependence
+                    <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 4px; font-size: 12px;">
+                        Low
+                    </span>
+                </h3>
+                <p><strong>Rule:</strong> SWC-116</p>
+                <p><strong>Description:</strong> Reliance on block.timestamp for critical logic can be manipulated</p>
+                <p><strong>Confidence:</strong> 40.0%</p>
+                <p><strong>Line:</strong> 64</p>
+                <pre><code>uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;</code></pre>
+                <p><strong>Remediation:</strong> Avoid using block.timestamp for critical time-sensitive logic. Miners can manipulate it by ~15 seconds.</p>
+                <details><summary><strong>Detailed Explanation</strong></summary><p>block.timestamp can be slightly manipulated by miners (up to ~15 seconds). Contracts that use it for time-sensitive logic may be vulnerable.</p><h4>Attack Scenario</h4><pre>Specific attack scenario depends on the contract context.</pre><h4>Fix Example</h4><pre><code>// Refer to the remediation suggestion above.</code></pre><h4>Code Context</h4><pre>    59:     }
+    60: 
+    61:     // VULNERABILITY: Weak randomness (SWC-120)
+    62:     function lottery() public view returns (uint256) {
+    63:         // BAD: Using block variables for randomness
+>>> 64:         uint256 winner = uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, msg.sender))) % 100;
+    65:         return winner;
+    66:     }
+    67: 
+    68:     // Get contract balance
+    69:     function getBalance() public view returns (uint256) {</pre></details>
+            </div>
+            
+
+    <hr>
+    <p><em>Generated by Smart Contract Auditor v1.0.0</em></p>
+</body>
+</html>

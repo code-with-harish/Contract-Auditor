@@ -1,0 +1,11 @@
+backend:
+cd "c:\Users\haris\projects\SDP\Smart Contract Auditor" && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+frontend:
+cd "c:\Users\haris\projects\SDP\Smart Contract Auditor\frontend\smart-auditor-ui" && npm start
+
+Access URLs:
+
+Frontend: http://localhost:3000
+Backend API: http://localhost:8000
+API Docs: http://localhost:8000/docs
