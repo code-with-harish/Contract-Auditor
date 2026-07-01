@@ -66,6 +66,12 @@ async def health_check():
     }
 
 
+# Configuration constants
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_CODE_LENGTH = 1000000  # 1 million characters
+ALLOWED_EXTENSIONS = {".sol", ".txt"}
+
+
 @app.post("/analyze")
 async def analyze_contract(
     file: Optional[UploadFile] = File(None),
@@ -75,10 +81,40 @@ async def analyze_contract(
     """Analyze a Solidity smart contract for vulnerabilities."""
 
     if file:
+        # Validate file size
         content = await file.read()
-        code = content.decode("utf-8")
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File size exceeds maximum allowed size of {MAX_FILE_SIZE / 1024 / 1024}MB",
+            )
+        
+        # Validate file extension
+        if file.filename:
+            file_ext = ".".join(file.filename.split(".")[1:])
+            if f".{file_ext}" not in ALLOWED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File type not allowed. Supported types: {', '.join(ALLOWED_EXTENSIONS)}",
+                )
+        
+        # Decode with error handling
+        try:
+            code = content.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file encoding. Please upload a UTF-8 encoded file. Error: {str(e)}",
+            )
+        
         name = file.filename or "Untitled"
     elif source_code:
+        # Validate source code length
+        if len(source_code) > MAX_CODE_LENGTH:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Source code exceeds maximum allowed length of {MAX_CODE_LENGTH} characters",
+            )
         code = source_code
         name = contract_name
     else:
@@ -105,12 +141,13 @@ async def analyze_contract(
     # Step 5: Generate risk summary
     risk_summary = _compute_risk_summary(explained_findings)
 
-    # Build report
+    # Build report (do not include full source code by default for privacy)
     report = {
         "id": analysis_id,
         "contract_name": name,
         "timestamp": datetime.utcnow().isoformat(),
-        "source_code": code,
+        "source_code_hash": hash(code),
+        "source_code_lines": len(code.split("\n")),
         "findings": explained_findings,
         "risk_summary": risk_summary,
         "total_issues": len(explained_findings),
