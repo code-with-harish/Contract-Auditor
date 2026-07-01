@@ -6,13 +6,20 @@ Main entry point for the REST API
 import uuid
 import os
 import json
+import logging
+import time
 from datetime import datetime
 from typing import Optional
+from functools import wraps
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from pythonjsonlogger import jsonlogger
 
 from .analysis.static_analyzer import StaticAnalyzer
 from .analysis.ml_ranker import MLVulnerabilityClassifier
@@ -20,11 +27,28 @@ from .analysis.explain import ExplainabilityEngine
 from .analysis.report_generator import ReportGenerator
 from .db.store import AnalysisStore
 
+# Configure structured logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = jsonlogger.JsonFormatter()
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="Smart Contract Auditor",
     description="AI-powered security auditor for Solidity smart contracts",
-    version="1.0.0",
+    version="1.1.0",
 )
+
+# Add rate limit exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS for React frontend
 app.add_middleware(
@@ -34,6 +58,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Middleware for request logging
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all requests with timing information."""
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+    
+    logger.info("Request processed", extra={
+        "method": request.method,
+        "path": request.url.path,
+        "status_code": response.status_code,
+        "duration_ms": round(duration * 1000, 2),
+        "client_ip": get_remote_address(request),
+    })
+    return response
 
 # Initialize modules
 static_analyzer = StaticAnalyzer()
@@ -53,10 +94,12 @@ class GitAnalyzeRequest(BaseModel):
 
 
 @app.get("/health")
-async def health_check():
+@limiter.limit("100/minute")
+async def health_check(request: Request):
+    logger.info("Health check request")
     return {
         "status": "healthy",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "modules": {
             "static_analyzer": "active",
             "ml_classifier": "active",
@@ -73,12 +116,20 @@ ALLOWED_EXTENSIONS = {".sol", ".txt"}
 
 
 @app.post("/analyze")
+@limiter.limit("10/minute")
 async def analyze_contract(
+    request: Request,
     file: Optional[UploadFile] = File(None),
     source_code: Optional[str] = Form(None),
     contract_name: Optional[str] = Form("Untitled"),
 ):
     """Analyze a Solidity smart contract for vulnerabilities."""
+
+    logger.info("Analysis request received", extra={
+        "has_file": file is not None,
+        "contract_name": contract_name,
+        "source_code_length": len(source_code) if source_code else 0,
+    })
 
     if file:
         # Validate file size
@@ -163,15 +214,31 @@ async def analyze_contract(
     # Store result
     store.save(analysis_id, report)
 
+    # Log analysis completion
+    logger.info("Analysis completed", extra={
+        "analysis_id": analysis_id,
+        "contract_name": name,
+        "total_issues": len(explained_findings),
+        "critical": sum(1 for f in explained_findings if f["severity"] == "Critical"),
+        "high": sum(1 for f in explained_findings if f["severity"] == "High"),
+        "risk_score": risk_summary.get("risk_score", 0),
+    })
+
     return report
 
 
 @app.post("/analyze/json")
-async def analyze_contract_json(request: AnalyzeRequest):
+@limiter.limit("10/minute")
+async def analyze_contract_json(request: Request, req: AnalyzeRequest):
     """Analyze a Solidity smart contract from JSON body."""
 
-    code = request.source_code
-    name = request.contract_name
+    code = req.source_code
+    name = req.contract_name
+
+    logger.info("JSON analysis request", extra={
+        "contract_name": name,
+        "source_code_length": len(code),
+    })
 
     analysis_id = str(uuid.uuid4())
 
@@ -203,23 +270,30 @@ async def analyze_contract_json(request: AnalyzeRequest):
 
 
 @app.get("/report/{analysis_id}")
-async def get_report(analysis_id: str):
+@limiter.limit("30/minute")
+async def get_report(request: Request, analysis_id: str):
     """Retrieve a previously generated analysis report."""
+    logger.info("Report retrieval", extra={"analysis_id": analysis_id})
     report = store.get(analysis_id)
     if not report:
+        logger.warning("Report not found", extra={"analysis_id": analysis_id})
         raise HTTPException(status_code=404, detail="Report not found")
     return report
 
 
 @app.get("/reports")
-async def list_reports():
+@limiter.limit("20/minute")
+async def list_reports(request: Request):
     """List all stored analysis reports."""
+    logger.info("Listing all reports")
     return store.list_all()
 
 
 @app.post("/analyze/batch")
-async def analyze_batch(files: list[UploadFile] = File(...)):
+@limiter.limit("5/minute")
+async def analyze_batch(request: Request, files: list[UploadFile] = File(...)):
     """Analyze multiple contracts in batch."""
+    logger.info("Batch analysis started", extra={"file_count": len(files)})
     results = []
     for file in files:
         content = await file.read()
