@@ -67,7 +67,7 @@ class StaticAnalyzer:
                 "id": "SWC-104",
                 "name": "Unchecked Call Return Value",
                 "description": "Return values of low-level calls must be checked",
-                "pattern": r'\.call\(|\.delegatecall\(|\.staticcall\(',
+                "pattern": r'\.call\(|\.delegatecall\(|\.staticcall\(|\.send\(',
                 "check_return": True,
                 "severity": "High",
                 "confidence": 0.85,
@@ -263,6 +263,7 @@ class StaticAnalyzer:
         state_change_patterns = [
             r'\w+\s*=\s*',       # assignment
             r'\w+\[.*\]\s*=',    # mapping/array assignment
+            r'\w+\[.*\]\s*[-+*/]?=',
             r'\w+\s*\+=',        # increment assignment
             r'\w+\s*\-=',        # decrement assignment
         ]
