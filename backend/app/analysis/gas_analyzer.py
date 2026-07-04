@@ -59,7 +59,7 @@ class GasAnalyzer:
                 "id": "GAS-005",
                 "name": "Array Length in Loop Condition",
                 "description": "Reading array length in loop condition (.length) is gas-inefficient",
-                "pattern": r'for\s*\([^;]*;\s*[^;]*\.length\s*[<>;]|while\s*\([^)]*\.length',
+                "pattern": r'for\s*\([^;]*;\s*[^;]*\.length\s*[<>;]|while\s*\([^)]*\.length|require\s*\([^,]+,\s*"[^"]+"\s*\)',
                 "severity": "Medium",
                 "savings": "3 gas per iteration",
                 "remediation": "Cache the array length in a local variable before the loop.",
